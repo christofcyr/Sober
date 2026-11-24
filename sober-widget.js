@@ -25,9 +25,10 @@ const MILESTONES = (function () {
   for (let half = 1; half <= 20; half++) {
     const months = half * 6;
     const days = Math.round(months * 30.4375);
-    const yrs = Math.floor(months / 12), mos = months % 12;
-    let name = yrs ? yrs + (yrs === 1 ? " year" : " years") : "";
-    if (mos) name += name ? " 6 months" : "Six months";
+    let name;
+    if (months < 12) name = months + " months";
+    else if (months % 12 === 0) { const y = months / 12; name = y + (y === 1 ? " year" : " years"); }
+    else name = (months / 12) + " years";   // 1.5, 2.5, 3.5 ...
     out.push([days, name]);
   }
   for (let k = 500; k <= 3650; k += 500) out.push([k, k.toLocaleString() + " days"]);

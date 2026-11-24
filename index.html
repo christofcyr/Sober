@@ -60,6 +60,13 @@
     background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px;
   }
   .field{margin-bottom:16px}
+
+  .topbar{display:flex; justify-content:flex-end; margin-bottom:-18px}
+  .icon{
+    flex:0 0 auto; width:46px; height:46px; padding:0; font-size:20px; line-height:1;
+    background:none; border:none; color:var(--dim);
+  }
+  .icon:active{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -67,19 +74,24 @@
 <!-- SETUP -->
 <section id="setup" class="hide">
   <div>
-    <h1>When was your last drink?</h1>
+    <h1 id="setupTitle">When was your last drink?</h1>
     <p class="sub">Day one is the day after. You can change this later.</p>
   </div>
   <div class="field">
     <label for="d">Date</label>
     <input type="date" id="d">
   </div>
-  <div class="row"><button class="primary" id="save">Start counting</button></div>
+  <div class="row"><button class="primary" id="save">Save</button></div>
+  <div class="row hide" id="settingsExtra">
+    <button class="danger" id="reset">Reset counter</button>
+  </div>
   <button class="ghost hide" id="cancel">Cancel</button>
 </section>
 
 <!-- COUNTER -->
 <section id="main" class="hide">
+  <div class="topbar"><button id="menu" class="icon" aria-label="Settings">&#9776;</button></div>
+
   <div class="label">Sober for</div>
 
   <div class="days"><b id="days">0</b><span id="daysWord">days</span></div>
@@ -91,11 +103,6 @@
   </div>
 
   <div class="since" id="since"></div>
-
-  <div class="row">
-    <button id="edit">Edit date</button>
-    <button class="danger" id="reset">Reset</button>
-  </div>
 </section>
 
 <script>
@@ -115,9 +122,10 @@
     for (var half = 1; half <= 20; half++){          // 6, 12, 18 ... 120 months
       var months = half * 6;
       var days = Math.round(months * 30.4375);
-      var yrs = Math.floor(months / 12), mos = months % 12;
-      var name = yrs ? (yrs + (yrs === 1 ? ' year' : ' years')) : '';
-      if (mos) name += (name ? ' 6 months' : '6 months');
+      var name;
+      if (months < 12)          name = months + ' months';
+      else if (months % 12 === 0) { var y = months / 12; name = y + (y === 1 ? ' year' : ' years'); }
+      else                      name = (months / 12) + ' years';   // 1.5, 2.5, 3.5 ...
       add(days, name);
     }
 
@@ -151,6 +159,9 @@
     var base = isEdit && start ? start : new Date();
     $('d').value = base.getFullYear() + '-' + pad(base.getMonth()+1) + '-' + pad(base.getDate());
     $('cancel').classList.toggle('hide', !isEdit);
+    $('settingsExtra').classList.toggle('hide', !isEdit);
+    $('setupTitle').textContent = isEdit ? 'Settings' : 'When was your last drink?';
+    $('save').textContent = isEdit ? 'Save' : 'Start counting';
     setup.classList.remove('hide');
     main.classList.add('hide');
     if (timer) { clearInterval(timer); timer = null; }
@@ -212,13 +223,13 @@
   };
 
   $('cancel').onclick = function(){ showMain(); };
-  $('edit').onclick   = function(){ showSetup(true); };
+  $('menu').onclick   = function(){ showSetup(true); };
 
   $('reset').onclick = function(){
     if (!confirm('Reset the counter? Day one starts tomorrow.')) return;
     var n = new Date();
     localStorage.setItem(KEY, n.getFullYear() + '-' + pad(n.getMonth()+1) + '-' + pad(n.getDate()));
-    tick();
+    showMain();
   };
 
   // keep it accurate when the app comes back from the background
