@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sober</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sober">
+<meta name="theme-color" content="#0b0f14">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+  :root{
+    --bg:#0b0f14; --card:#121922; --line:#1e2a36;
+    --ink:#e8eef5; --dim:#7f8fa1; --accent:#4fd1a5; --warn:#e05a5a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; min-height:100svh;
+    padding:max(env(safe-area-inset-top),20px) 20px max(env(safe-area-inset-bottom),20px);
+  }
+  .hide{display:none !important}
+
+  /* ---------- counter screen ---------- */
+  #main{flex:1; display:flex; flex-direction:column; justify-content:center; gap:28px}
+  .label{text-align:center; font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
+  .days{text-align:center; line-height:.9}
+  .days b{display:block; font-size:clamp(84px,30vw,160px); font-weight:800; letter-spacing:-.04em}
+  .days span{display:block; margin-top:10px; font-size:15px; letter-spacing:.2em; text-transform:uppercase; color:var(--dim)}
+
+  .milestone{
+    background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px;
+  }
+  .milestone .top{display:flex; justify-content:space-between; font-size:13px; color:var(--dim); margin-bottom:10px}
+  .bar{height:7px; background:#0a0e13; border-radius:99px; overflow:hidden}
+  .bar i{display:block; height:100%; background:var(--accent); border-radius:99px; transition:width .6s ease}
+  .since{text-align:center; font-size:13px; color:var(--dim)}
+
+  /* ---------- buttons ---------- */
+  .row{display:flex; gap:10px}
+  button{
+    flex:1; font:inherit; font-size:15px; font-weight:600; color:var(--ink);
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:15px; cursor:pointer;
+  }
+  button:active{transform:scale(.98)}
+  .primary{background:var(--accent); border-color:var(--accent); color:#07130f}
+  .danger{color:var(--warn)}
+  .ghost{background:none; border:none; color:var(--dim); font-weight:500}
+
+  /* ---------- setup screen ---------- */
+  #setup{flex:1; display:flex; flex-direction:column; justify-content:center; gap:18px}
+  h1{font-size:26px; margin:0 0 4px; font-weight:800; letter-spacing:-.02em}
+  p.sub{margin:0 0 10px; color:var(--dim); font-size:15px; line-height:1.5}
+  label{display:block; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); margin-bottom:8px}
+  input{
+    width:100%; font:inherit; font-size:17px; color:var(--ink);
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px;
+  }
+  .field{margin-bottom:16px}
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<section id="setup" class="hide">
+  <div>
+    <h1>When was your last drink?</h1>
+    <p class="sub">Day one is the day after. You can change this later.</p>
+  </div>
+  <div class="field">
+    <label for="d">Date</label>
+    <input type="date" id="d">
+  </div>
+  <div class="row"><button class="primary" id="save">Start counting</button></div>
+  <button class="ghost hide" id="cancel">Cancel</button>
+</section>
+
+<!-- COUNTER -->
+<section id="main" class="hide">
+  <div class="label">Sober for</div>
+
+  <div class="days"><b id="days">0</b><span id="daysWord">days</span></div>
+
+
+  <div class="milestone">
+    <div class="top"><span id="msName">Next up</span><span id="msLeft"></span></div>
+    <div class="bar"><i id="msBar" style="width:0%"></i></div>
+  </div>
+
+  <div class="since" id="since"></div>
+
+  <div class="row">
+    <button id="edit">Edit date</button>
+    <button class="danger" id="reset">Reset</button>
+  </div>
+</section>
+
+<script>
+(function(){
+  var KEY = 'dry.start';
+  var $ = function(id){ return document.getElementById(id); };
+  var setup = $('setup'), main = $('main'), timer = null;
+
+  // early wins, then every 6 months, every year, and every 500 days, out to 10 years
+  var MILESTONES = (function(){
+    var out = [];
+    function add(d, name){ out.push([d, name]); }
+
+    [[1,'1 day'],[3,'3 days'],[7,'1 week'],[14,'2 weeks'],[30,'1 month'],
+     [60,'2 months'],[90,'3 months']].forEach(function(m){ add(m[0], m[1]); });
+
+    for (var half = 1; half <= 20; half++){          // 6, 12, 18 ... 120 months
+      var months = half * 6;
+      var days = Math.round(months * 30.4375);
+      var yrs = Math.floor(months / 12), mos = months % 12;
+      var name = yrs ? (yrs + (yrs === 1 ? ' year' : ' years')) : '';
+      if (mos) name += (name ? ' 6 months' : '6 months');
+      add(days, name);
+    }
+
+    for (var k = 500; k <= 3650; k += 500){ add(k, k.toLocaleString() + ' days'); }
+
+    out.sort(function(a, b){ return a[0] - b[0]; });
+    return out.filter(function(m, i){ return i === 0 || m[0] !== out[i-1][0]; });
+  })();
+
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+
+  // the stored value is the DATE of the last drink, as YYYY-MM-DD.
+  // day one is the day after it, so the count is simply the number of
+  // whole calendar days between that date and today.
+  function getStart(){
+    var v = localStorage.getItem(KEY);
+    if (!v) return null;
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+    if (!m) return null;
+    return new Date(+m[1], +m[2] - 1, +m[3]);   // local midnight
+  }
+
+  function daysSince(start){
+    var today = new Date();
+    today = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return Math.round((today - start) / 86400000);
+  }
+
+  function showSetup(isEdit){
+    var start = getStart();
+    var base = isEdit && start ? start : new Date();
+    $('d').value = base.getFullYear() + '-' + pad(base.getMonth()+1) + '-' + pad(base.getDate());
+    $('cancel').classList.toggle('hide', !isEdit);
+    setup.classList.remove('hide');
+    main.classList.add('hide');
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  function showMain(){
+    setup.classList.add('hide');
+    main.classList.remove('hide');
+    tick();
+    if (!timer) timer = setInterval(tick, 30000);
+  }
+
+  function tick(){
+    var start = getStart();
+    if (!start) return showSetup(false);
+
+    var days = daysSince(start);
+    if (days < 0) days = 0;
+
+    $('days').textContent = days;
+    $('daysWord').textContent = days === 1 ? 'day' : 'days';
+
+    // milestone progress
+    var prev = 0, next = null;
+    for (var i = 0; i < MILESTONES.length; i++){
+      if (days < MILESTONES[i][0]) { next = MILESTONES[i]; break; }
+      prev = MILESTONES[i][0];
+    }
+    if (next){
+      var span = next[0] - prev;
+      var done = days - prev;
+      var pct = Math.max(0, Math.min(100, (done / span) * 100));
+      var left = next[0] - days;
+      $('msName').textContent = 'Next: ' + next[1];
+      $('msLeft').textContent = left + (left === 1 ? ' day to go' : ' days to go');
+      $('msBar').style.width = pct + '%';
+    } else {
+      $('msName').textContent = 'Every milestone cleared';
+      $('msLeft').textContent = days + ' days';
+      $('msBar').style.width = '100%';
+    }
+
+    var dayOne = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+    $('since').textContent = (days === 0 ? 'Day one starts ' : 'Day one was ') +
+      dayOne.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  }
+
+  $('save').onclick = function(){
+    var d = $('d').value;
+    if (!d) { alert('Pick a date first.'); return; }
+    var when = new Date(d + 'T00:00');
+    if (isNaN(when)) { alert("That date didn't read properly."); return; }
+    var today = new Date();
+    if (when > new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+      alert("That's in the future."); return;
+    }
+    localStorage.setItem(KEY, d);
+    showMain();
+  };
+
+  $('cancel').onclick = function(){ showMain(); };
+  $('edit').onclick   = function(){ showSetup(true); };
+
+  $('reset').onclick = function(){
+    if (!confirm('Reset the counter? Day one starts tomorrow.')) return;
+    var n = new Date();
+    localStorage.setItem(KEY, n.getFullYear() + '-' + pad(n.getMonth()+1) + '-' + pad(n.getDate()));
+    tick();
+  };
+
+  // keep it accurate when the app comes back from the background
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden && !main.classList.contains('hide')) tick();
+  });
+
+  getStart() ? showMain() : showSetup(false);
+})();
+</script>
+</body>
+</html>
